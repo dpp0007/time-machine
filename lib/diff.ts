@@ -10,6 +10,7 @@ export type Diff = {
 
 const MONTH = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
 const NOISE: [RegExp, string][] = [
+  [/^\W*(?:request|trace|session|correlation|transaction|build|nonce|csrf)[ _-]?(?:id|token).*$/gi, "<id-line>"],
   [/\]\((https?:[^)\s]*?)(?:[?#][^)\s]*)?\)/g, "]($1)"], // drop query/hash tracking on links
   [new RegExp(`\\b${MONTH}\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}\\b`, "gi"), "<date>"],
   [new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH}\\.?,?\\s+\\d{4}\\b`, "gi"), "<date>"],
