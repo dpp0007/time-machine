@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { diffText, signature } from "./diff";
-import { createMonitor, deleteMonitor, runMonitor, screenshot, type MonitorRun } from "./tf";
+import { createMonitor, deleteMonitor, runMonitor, screenshot, updateSchedule, type MonitorRun } from "./tf";
 import { deletePage, getPage, listPages, pageId, savePage, saveShot, withPage, type LogEntry, type Page, type Version } from "./store";
 
-const SCHEDULE = () => process.env.SCHEDULE_CRON || "0 */3 * * *";
+const SCHEDULE = () => process.env.SCHEDULE_CRON || "0 * * * *";
 const webhook = () =>
   process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL.replace(/\/$/, "")}/api/webhook/monitor?s=${encodeURIComponent(process.env.WEBHOOK_SECRET || "")}` : undefined;
 
@@ -34,7 +34,7 @@ export function ingest(id: string, run: MonitorRun, source: Version["tf"]["sourc
       p.rawHash = raw;
       note(p, { source, runId: run.id, result: noisy ? "noise-ignored" : "unchanged" });
       await savePage(p);
-      return { changed: false, noise: noisy };
+      return { changed: false, noise: noisy, comparedTo: prev.n, checkedAt: now };
     }
     p.rawHash = raw;
     const v: Version = {
@@ -58,7 +58,7 @@ export function ingest(id: string, run: MonitorRun, source: Version["tf"]["sourc
     p.versions.push(v);
     note(p, { source, runId: run.id, result: prev ? "changed" : "baseline", version: v.n, detail: v.summary ? `+${v.summary.added} -${v.summary.removed} ~${v.summary.changed}` : undefined });
     await savePage(p);
-    return { changed: !!prev, version: v.n };
+    return { changed: !!prev, version: v.n, checkedAt: now };
   });
 }
 
@@ -76,9 +76,13 @@ export async function addPage(url: string, name: string, category: string) {
   return { id, existed: false };
 }
 
-export async function checkPage(id: string) {
+const lastRun = new Map<string, number>();
+export async function checkPage(id: string, force = false) {
   const p = await getPage(id);
   if (!p) throw new Error("not found");
+  // each run-now costs credit; public "Check now" is limited to once a minute per page
+  if (!force && Date.now() - (lastRun.get(id) ?? 0) < 60_000) throw new Error("cooldown: this page was just checked, try again in a minute");
+  lastRun.set(id, Date.now());
   const { run } = await runMonitor(p.monitorId);
   return ingest(id, run, "run-now");
 }
@@ -98,9 +102,23 @@ export async function syncAll() {
   await Promise.all(Array.from({ length: 3 }, async () => {
     while (i < pages.length) {
       const p = pages[i++];
-      try { out.push({ id: p.id, ...(await checkPage(p.id)) }); }
+      try { out.push({ id: p.id, ...(await checkPage(p.id, true)) }); }
       catch (e) { out.push({ id: p.id, error: String((e as Error).message).slice(0, 200) }); }
     }
   }));
   return out;
+}
+
+/** Point every Monitor (and our stored copy) at the current SCHEDULE_CRON. */
+export async function reschedule() {
+  const cron = SCHEDULE();
+  const out: { id: string; ok: boolean; error?: string }[] = [];
+  for (const p of await listPages()) {
+    try {
+      await updateSchedule(p.monitorId, cron);
+      await withPage(p.id, async () => { const q = await getPage(p.id); if (q) { q.schedule = cron; await savePage(q); } });
+      out.push({ id: p.id, ok: true });
+    } catch (e) { out.push({ id: p.id, ok: false, error: String((e as Error).message).slice(0, 150) }); }
+  }
+  return { cron, results: out };
 }

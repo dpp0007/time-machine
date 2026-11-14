@@ -47,6 +47,8 @@ export async function createMonitor(url: string, name: string, schedule: string,
   });
 }
 export const runMonitor = (id: string) => call<{ run: MonitorRun }>(AGENT, `/v1/monitors/${id}/runs`, { method: "POST" });
+export const updateSchedule = (id: string, schedule_cron: string) =>
+  call(AGENT, `/v1/monitors/${id}`, { method: "PATCH", body: JSON.stringify({ schedule_cron }) });
 export const deleteMonitor = (id: string) => call(AGENT, `/v1/monitors/${id}`, { method: "DELETE" });
 export const listMonitors = () => call<{ monitors: { id: string; status: string }[] }>(AGENT, "/v1/monitors");
 
@@ -64,6 +66,9 @@ export async function screenshot(url: string): Promise<Buffer> {
     if (page.url() === "about:blank" || !page.url().startsWith("http")) await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
     await page.waitForLoadState("load", { timeout: 20_000 }).catch(() => {});
     await page.waitForTimeout(2500);
+    // hide cookie/consent overlays so the stored screenshot shows the page, not the banner
+    await page.addStyleTag({ content: "[id*='cookie' i],[class*='cookie' i],[id*='consent' i],[class*='consent' i],#onetrust-consent-sdk,#onetrust-banner-sdk,[aria-label*='cookie' i]{display:none!important}" }).catch(() => {});
+    await page.waitForTimeout(400);
     const buf = await page.screenshot({ type: "jpeg", quality: 70, fullPage: true }).catch(() => page.screenshot({ type: "jpeg", quality: 70 }));
     await browser.close().catch(() => {});
     return buf;
