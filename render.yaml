@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: time-machine
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: TINYFISH_API_KEY
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: SCHEDULE_CRON
+        value: "0 */3 * * *"
+      - key: POLL_MINUTES
+        value: "180"
