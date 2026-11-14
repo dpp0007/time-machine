@@ -11,4 +11,5 @@ assert.equal(d.values[0].from, "$20");
 assert.equal(d.values[0].to, "$25");
 assert.deepEqual(d.removed, ["Team: $40/month"]);
 assert.deepEqual(d.added, ["New Enterprise plan"]);
+assert.equal(signature("Request Id: f4e58ca7-1caa-4c3b-96df-2bbb8c829550-132094473\nHi"), signature("Request Id: f51d66f7-af6d-4b28-9ee4-d0420a759cb5-131188312\nHi"));
 console.log("diff ok", JSON.stringify(d.stats));

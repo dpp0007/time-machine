@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { diffText, signature } from "./diff";
 import { createMonitor, deleteMonitor, runMonitor, screenshot, updateSchedule, type MonitorRun } from "./tf";
-import { deletePage, getPage, listPages, pageId, savePage, saveShot, withPage, type LogEntry, type Page, type Version } from "./store";
+import { deletePage, deleteShot, getPage, listPages, pageId, savePage, saveShot, withPage, type LogEntry, type Page, type Version } from "./store";
 
 const SCHEDULE = () => process.env.SCHEDULE_CRON || "0 * * * *";
 const webhook = () =>
@@ -121,4 +121,25 @@ export async function reschedule() {
     } catch (e) { out.push({ id: p.id, ok: false, error: String((e as Error).message).slice(0, 150) }); }
   }
   return { cron, results: out };
+}
+
+/** Retract trailing versions that are noise-only under the current rules (e.g. after improving the noise filter). */
+export async function prune() {
+  const out: { id: string; removed: number[] }[] = [];
+  for (const p0 of await listPages()) {
+    await withPage(p0.id, async () => {
+      const p = await getPage(p0.id);
+      if (!p) return;
+      const removed: number[] = [];
+      while (p.versions.length > 1 && signature(p.versions[p.versions.length - 1].text) === signature(p.versions[p.versions.length - 2].text)) {
+        const v = p.versions.pop()!;
+        removed.push(v.n);
+        await deleteShot(p.id, v.n);
+        for (const e of p.log) if (e.version === v.n && e.result === "changed") { e.result = "noise-ignored"; e.detail = "retracted: noise-only under updated filter"; e.version = undefined; }
+        p.noiseIgnored++;
+      }
+      if (removed.length) { await savePage(p); out.push({ id: p.id, removed }); }
+    });
+  }
+  return out;
 }

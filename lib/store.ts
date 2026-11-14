@@ -98,6 +98,11 @@ export async function saveShot(id: string, n: number, buf: Buffer) {
   }
   return `/api/shots/${id}/${n}.jpg`;
 }
+export async function deleteShot(id: string, n: number) {
+  const db = await sql();
+  if (db) await db.query("delete from shots where id=$1 and n=$2", [id, n]);
+  else await fs.rm(path.join(DATA, "shots", id, `${n}.jpg`), { force: true });
+}
 export async function getShot(id: string, n: number): Promise<Buffer | null> {
   const db = await sql();
   if (db) return (await db.query("select img from shots where id=$1 and n=$2", [id, n])).rows[0]?.img ?? null;

@@ -10,6 +10,7 @@ export type Diff = {
 
 const MONTH = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
 const NOISE: [RegExp, string][] = [
+  [/^\W*(?:request|trace|session|correlation|transaction|build|nonce|csrf)[ _-]?(?:id|token)\b.*$/gim, "<id-line>"],
   [/^\W*(?:request|trace|session|correlation|transaction|build|nonce|csrf)[ _-]?(?:id|token).*$/gi, "<id-line>"],
   [/\]\((https?:[^)\s]*?)(?:[?#][^)\s]*)?\)/g, "]($1)"], // drop query/hash tracking on links
   [new RegExp(`\\b${MONTH}\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}\\b`, "gi"), "<date>"],
@@ -19,7 +20,7 @@ const NOISE: [RegExp, string][] = [
   [/\b\d{1,2}:\d{2}(?::\d{2})?\s?(?:am|pm)?\b/gi, "<time>"],
   [/(?:©|\(c\)|copyright)\s*\d{4}(?:\s*[-–]\s*\d{4})?/gi, "©"],
   [/\b\d+\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\b/gi, "<ago>"],
-  [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<id>"],
+  [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-\d+)?\b/gi, "<id>"],
   [/\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{20,}\b/g, "<id>"], // tracking/session tokens
 ];
 
