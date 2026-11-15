@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { diffText, signature } from "./diff";
+import { diffText, keepMask, signature } from "./diff";
 import { createMonitor, deleteMonitor, runMonitor, screenshot, updateSchedule, type MonitorRun } from "./tf";
-import { deletePage, deleteShot, getPage, listPages, pageId, savePage, saveShot, withPage, type LogEntry, type Page, type Version } from "./store";
+import { deletePage, deleteShot, getPage, moveShot, listPages, pageId, savePage, saveShot, withPage, type LogEntry, type Page, type Version } from "./store";
 
 const SCHEDULE = () => process.env.SCHEDULE_CRON || "0 * * * *";
 const webhook = () =>
@@ -28,18 +28,39 @@ export function ingest(id: string, run: MonitorRun, source: Version["tf"]["sourc
     p.lastError = null;
     const prev = p.versions[p.versions.length - 1];
     const raw = createHash("sha1").update(text).digest("hex");
-    if (prev && signature(prev.text) === signature(text)) {
+    const sig = signature(text), sigHash = createHash("sha1").update(sig).digest("hex");
+    if (prev && signature(prev.text) === sig) {
       const noisy = !!p.rawHash && p.rawHash !== raw; // text differed, but only in dates/ids/tracking
       if (noisy) p.noiseIgnored++;
       p.rawHash = raw;
+      p.pending = undefined;
       note(p, { source, runId: run.id, result: noisy ? "noise-ignored" : "unchanged" });
       await savePage(p);
       return { changed: false, noise: noisy, comparedTo: prev.n, checkedAt: now };
     }
+    if (prev) {
+      // Pages that serve alternate variants (A/B tests, regional or partial renders) flip between states we have already recorded.
+      const known = p.versions.find((x) => signature(x.text) === sig);
+      if (known) {
+        p.noiseIgnored++; p.rawHash = raw; p.pending = undefined;
+        note(p, { source, runId: run.id, result: "variant-flip", detail: `alternate state, same as v${known.n}` });
+        await savePage(p);
+        return { changed: false, variant: true, comparedTo: prev.n, checkedAt: now };
+      }
+      // A brand-new state must be seen on two consecutive checks before it becomes a version (filters one-off partial renders).
+      if (p.pending?.sig !== sigHash) {
+        p.pending = { sig: sigHash, firstSeen: now };
+        note(p, { source, runId: run.id, result: "pending", detail: "new content seen once, waiting for the next check to confirm" });
+        await savePage(p);
+        return { changed: false, pending: true, comparedTo: prev.n, checkedAt: now };
+      }
+    }
+    const since = p.pending?.firstSeen ?? now;
+    p.pending = undefined;
     p.rawHash = raw;
     const v: Version = {
       n: p.versions.length + 1,
-      capturedAt: now,
+      capturedAt: since,
       title: res?.title ?? null,
       text,
       shot: null,
@@ -139,6 +160,39 @@ export async function prune() {
         p.noiseIgnored++;
       }
       if (removed.length) { await savePage(p); out.push({ id: p.id, removed }); }
+    });
+  }
+  return out;
+}
+
+/** Retroactively collapse flip-flop history (A,B,A,B...) to the distinct states, renumbering versions and screenshots. */
+export async function compact() {
+  const out: { id: string; kept: number; dropped: number }[] = [];
+  for (const p0 of await listPages()) {
+    await withPage(p0.id, async () => {
+      const p = await getPage(p0.id);
+      if (!p || p.versions.length < 2) return;
+      const keep = keepMask(p.versions.map((v) => signature(v.text)));
+      const dropped = keep.filter((k) => !k).length;
+      if (!dropped) return;
+      const map = new Map<number, number>();
+      const kept: Version[] = [];
+      p.versions.forEach((v, i) => { if (keep[i]) { map.set(v.n, kept.length + 1); kept.push(v); } else void deleteShot(p.id, v.n); });
+      await Promise.all(p.versions.filter((v, i) => !keep[i]).map((v) => deleteShot(p.id, v.n)));
+      for (const v of kept) {
+        const to = map.get(v.n)!;
+        if (to !== v.n) { await moveShot(p.id, v.n, to); if (v.shot) v.shot = `/api/shots/${p.id}/${to}.jpg`; }
+        v.n = to;
+      }
+      for (const e of p.log) {
+        if (e.version == null) continue;
+        const to = map.get(e.version);
+        if (to) e.version = to;
+        else { e.result = "variant-flip"; e.detail = "retracted: page alternates between known states"; e.version = undefined; }
+      }
+      p.versions = kept; p.noiseIgnored += dropped; p.pending = undefined;
+      await savePage(p);
+      out.push({ id: p.id, kept: kept.length, dropped });
     });
   }
   return out;

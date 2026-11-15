@@ -17,7 +17,7 @@ export type Version = {
   summary?: { added: number; removed: number; changed: number; values: Diff["values"] };
   tf: { runId?: string; outcome?: string; judgment?: unknown; source: "create" | "run-now" | "webhook" };
 };
-export type LogEntry = { at: string; source: Version["tf"]["source"]; runId?: string; result: "baseline" | "changed" | "unchanged" | "noise-ignored" | "error"; version?: number; detail?: string };
+export type LogEntry = { at: string; source: Version["tf"]["source"]; runId?: string; result: "baseline" | "changed" | "unchanged" | "noise-ignored" | "variant-flip" | "pending" | "error"; version?: number; detail?: string };
 export type Page = {
   id: string;
   monitorId: string;
@@ -31,6 +31,7 @@ export type Page = {
   checks: number;
   noiseIgnored: number;
   rawHash?: string;
+  pending?: { sig: string; firstSeen: string }; // unseen state awaiting a 2nd consecutive sighting
   log: LogEntry[];
   versions: Version[];
 };
@@ -97,6 +98,11 @@ export async function saveShot(id: string, n: number, buf: Buffer) {
     await fs.writeFile(path.join(d, `${n}.jpg`), buf);
   }
   return `/api/shots/${id}/${n}.jpg`;
+}
+export async function moveShot(id: string, from: number, to: number) {
+  const db = await sql();
+  if (db) await db.query("update shots set n=$3 where id=$1 and n=$2", [id, from, to]);
+  else await fs.rename(path.join(DATA, "shots", id, `${from}.jpg`), path.join(DATA, "shots", id, `${to}.jpg`)).catch(() => {});
 }
 export async function deleteShot(id: string, n: number) {
   const db = await sql();

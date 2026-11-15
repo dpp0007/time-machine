@@ -12,8 +12,8 @@ type P = { id: string; name: string; source: string; category: string; monitorId
 type Full = { text: string; diffFromPrevious: Diff | null };
 
 const cronText = (c: string) => (c === "0 * * * *" ? "hourly" : /^0 \*\/(\d+) \* \* \*$/.test(c) ? `every ${c.match(/\/(\d+)/)![1]}h` : c);
-const pillFor = (r: string) => (r === "changed" ? "c" : r === "error" ? "r" : r === "baseline" ? "n" : "a");
-const label = (r: string) => (r === "unchanged" ? "no change" : r === "noise-ignored" ? "noise ignored" : r);
+const pillFor = (r: string) => (r === "changed" ? "c" : r === "error" ? "r" : r === "baseline" || r === "pending" ? "n" : "a");
+const label = (r: string) => (r === "unchanged" ? "no change" : r === "noise-ignored" ? "noise ignored" : r === "variant-flip" ? "variant flip ignored" : r);
 
 export default function PageDetail() {
   const { id } = useParams<{ id: string }>();
@@ -61,6 +61,8 @@ export default function PageDetail() {
     if (!r.ok) setRes({ t: j.error, k: "bad" });
     else if (j.error) setRes({ t: `Check at ${at} failed: ${j.error}`, k: "bad" });
     else if (j.changed) { setRes({ t: `Change caught at ${at}. Saved as version ${j.version} with a new screenshot.`, k: "warn" }); setSel(j.version); }
+    else if (j.variant) setRes({ t: `Checked at ${at}. The page showed an alternate variant of content we already recorded, so it was ignored.`, k: "ok" });
+    else if (j.pending) setRes({ t: `Checked at ${at}. New content seen once; it will be recorded if the next check confirms it (filters one-off flickers).`, k: "warn" });
     else setRes({ t: `Checked at ${at}. No meaningful change since version ${j.comparedTo}${j.noise ? " (only dates or tracking noise differed, ignored)" : ""}.`, k: "ok" });
     await load(); setBusy(false);
   };

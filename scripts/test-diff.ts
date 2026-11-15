@@ -1,4 +1,4 @@
-import { diffText, signature } from "../lib/diff.ts";
+import { diffText, keepMask, signature } from "../lib/diff.ts";
 import assert from "node:assert";
 
 const a = "# Pricing\nPro: $20/month\nTeam: $40/month\nLast updated March 5, 2025\n© 2025 Acme\n[Docs](https://x.com/d?utm_source=a1)";
@@ -12,4 +12,7 @@ assert.equal(d.values[0].to, "$25");
 assert.deepEqual(d.removed, ["Team: $40/month"]);
 assert.deepEqual(d.added, ["New Enterprise plan"]);
 assert.equal(signature("Request Id: f4e58ca7-1caa-4c3b-96df-2bbb8c829550-132094473\nHi"), signature("Request Id: f51d66f7-af6d-4b28-9ee4-d0420a759cb5-131188312\nHi"));
+// flip-flopping page (A,B,A,B,B) collapses to its first state; a genuine A -> B -> C keeps all
+assert.deepEqual(keepMask(["A", "B", "A", "B", "B"]), [true, false, false, false, false]);
+assert.deepEqual(keepMask(["A", "B", "C"]), [true, true, true]);
 console.log("diff ok", JSON.stringify(d.stats));

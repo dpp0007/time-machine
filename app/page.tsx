@@ -26,7 +26,7 @@ const DOCS: [string, string, string][] = [
   ["POST", "/api/webhook/monitor?s=…", "Receiver for TinyFish Monitor scheduled-run webhooks"],
 ];
 
-const pillFor = (r: string) => (r === "changed" ? "c" : r === "error" ? "r" : r === "baseline" ? "n" : "a");
+const pillFor = (r: string) => (r === "changed" ? "c" : r === "error" ? "r" : r === "baseline" || r === "pending" ? "n" : "a");
 
 export default function Home() {
   const [pages, setPages] = useState<Card[] | null>(null);
@@ -111,7 +111,7 @@ export default function Home() {
         <div className="stat"><b>{pages?.length ?? "–"}</b><span>pages watched</span></div>
         <div className="stat"><b>{sum((p) => p.checks)}</b><span>Monitor runs</span></div>
         <div className="stat hl"><b>{sum((p) => p.changes)}</b><span>real changes caught</span></div>
-        <div className="stat"><b>{sum((p) => p.noiseIgnored)}</b><span>noise edits ignored</span></div>
+        <div className="stat"><b>{sum((p) => p.noiseIgnored)}</b><span>noise &amp; flips ignored</span></div>
         <div className="stat"><b>{lastRun ? rel(lastRun) : "–"}</b><span>last run</span></div>
       </div>
     </div>

@@ -107,3 +107,14 @@ export function diffText(oldText: string, newText: string): Diff {
   d.stats = { added: d.added.length, removed: d.removed.length, changed: d.changed.length };
   return d;
 }
+
+/** Which versions survive flap-compaction? Drop a version if its state was already seen (recurrence)
+ *  or it was a one-step excursion that immediately returned to the previous state (A -> B -> A). */
+export function keepMask(sigs: string[]): boolean[] {
+  const seen = new Set<string>();
+  return sigs.map((s, k) => {
+    const drop = k > 0 && (seen.has(s) || (k + 1 < sigs.length && sigs[k + 1] === sigs[k - 1]));
+    seen.add(s);
+    return !drop;
+  });
+}
