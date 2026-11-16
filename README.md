@@ -8,6 +8,20 @@ menu prices) and keeps a **screenshot + text for every real change**. It answers
 - *"What did this page say on date X?"*
 - *"What changed between two dates?"* (added / removed / changed lines, plus price and number changes)
 
+### A real change it caught
+
+On 16 Nov 2026 (09:00 UTC) the hourly TinyFish Monitor run on **AAA US gas price average** detected that the page changed.
+Time Machine stored version 3 with a screenshot and this diff:
+
+| Page | Before | After |
+|---|---|---|
+| gasprices.aaa.com, "Today's AAA National Average" | **$3.8242** | **$3.8118** |
+
+Open the evidence (screenshot, text and diff):
+[/p/588cb5fc74?v=3](https://time-machine-oz05.onrender.com/p/588cb5fc74?v=3). Other captures are in the
+[Changes tab](https://time-machine-oz05.onrender.com/) and at `/api/changes`: Google Privacy Policy, OpenAI API pricing and changelog,
+GitHub changelog. Pages that only change a date or tracking code are ignored, not versioned.
+
 ---
 
 ## 1. What I built

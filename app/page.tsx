@@ -26,7 +26,7 @@ const DOCS: [string, string, string][] = [
   ["POST", "/api/webhook/monitor?s=…", "Receiver for TinyFish Monitor scheduled-run webhooks"],
 ];
 
-const pillFor = (r: string) => (r === "changed" ? "c" : r === "error" ? "r" : r === "baseline" || r === "pending" ? "n" : "a");
+const pillFor = (r: string) => (r === "changed" ? "c" : r === "error" ? "r" : r === "unchanged" ? "a" : "n");
 
 export default function Home() {
   const [pages, setPages] = useState<Card[] | null>(null);
@@ -100,12 +100,16 @@ export default function Home() {
     .sort((a, b) => (b.lastChangeAt ?? "").localeCompare(a.lastChangeAt ?? "") || a.name.localeCompare(b.name));
   const sum = (f: (p: Card) => number) => (pages ?? []).reduce((a, p) => a + f(p), 0);
   const lastRun = log[0]?.at ?? null;
+  const lastBy = useMemo(() => { const m: Record<string, Change> = {}; changes.forEach((c) => { if (!m[c.pageId]) m[c.pageId] = c; }); return m; }, [changes]);
+  const latest = changes[0];
+  const sweep = lastRun ? log.filter((e) => new Date(lastRun).getTime() - new Date(e.at).getTime() < 30 * 60_000) : [];
+  const notable = log.filter((e) => e.result !== "unchanged" && e.result !== "baseline").slice(0, 8);
 
   return (<>
     <div className="hero">
       <div>
-        <h1>Every change to the pages that matter, with the receipts.</h1>
-        <p className="muted">TinyFish Monitor checks each page on a schedule. When the content really changes (not just a date or tracking code) we store a screenshot and a structured diff.</p>
+        <h1>See exactly what changed on the pages that matter.</h1>
+        <p className="muted">TinyFish Monitor checks each page every hour. When the content really changes (not just a date or tracking code) we keep a screenshot and a diff, so you can ask what a page said on any day.</p>
       </div>
       <div className="stats">
         <div className="stat"><b>{pages?.length ?? "–"}</b><span>pages watched</span></div>
@@ -123,17 +127,6 @@ export default function Home() {
 
     <div className="dash">
       <aside className="side">
-        <form className="panel" onSubmit={submit}>
-          <h2>Track a page</h2>
-          <input required type="url" placeholder="https://example.com/pricing" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
-          <label className="f">Name</label>
-          <input placeholder="Optional" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <label className="f">Category</label>
-          <input list="cats" placeholder="e.g. SaaS pricing" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
-          <datalist id="cats">{cats.map(([c]) => <option key={c} value={c} />)}</datalist>
-          <button className="pri" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!!busy}>{busy === "add" ? "Adding…" : "Start tracking"}</button>
-        </form>
-
         <div className="panel">
           <h2>Categories</h2>
           <div className="cats">
@@ -149,25 +142,46 @@ export default function Home() {
           {tdate && <button className="ghost" style={{ marginTop: 8 }} onClick={() => setTdate("")}>Back to now</button>}
         </div>
 
-        <div className="panel">
-          <h2>Tools</h2>
-          <div className="row2">
+        <details className="panel tools">
+          <summary>Tools</summary>
+          <div className="row2" style={{ marginTop: 10 }}>
             <button onClick={syncAll} disabled={!!busy}>{busy === "sync" ? "Checking…" : "Check all now"}</button>
             <a className="btn" href="/api/export?text=1" download>Export JSON</a>
             <button onClick={seed} disabled={!!busy}>{busy === "seed" ? "Seeding…" : "Add seed pages"}</button>
           </div>
           {prog && <div className="prog"><i style={{ width: `${(prog.done / Math.max(prog.total, 1)) * 100}%` }} /></div>}
           {prog?.fails.length ? <details style={{ marginTop: 8 }}><summary className="sm" style={{ color: "var(--bad)" }}>{prog.fails.length} failed</summary>{prog.fails.map((f) => <div key={f} className="muted sm">{f}</div>)}</details> : null}
-          {msg && <div className={"toast " + msg.k}>{msg.t}</div>}
-        </div>
+        </details>
       </aside>
 
       <section>
+        {msg && <div className={"toast " + msg.k} style={{ marginTop: 0, marginBottom: 14 }}>{msg.t}</div>}
         {tab === "pages" && <>
-          <div className="row2" style={{ marginBottom: 12 }}>
+          <form className="panel track" onSubmit={submit}>
+            <div className="track-main">
+              <input required type="url" placeholder="Paste a URL to start tracking, e.g. https://example.com/pricing" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
+              <button className="pri" disabled={!!busy}>{busy === "add" ? "Adding…" : "Track page"}</button>
+            </div>
+            <div className="track-opt">
+              <input placeholder="Name (optional)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <input list="cats" placeholder="Category (optional)" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+              <datalist id="cats">{cats.map(([c]) => <option key={c} value={c} />)}</datalist>
+            </div>
+          </form>
+          {latest && !tdate && <Link href={`/p/${latest.pageId}?v=${latest.version}`} className="catch">
+            <div className="th" style={latest.screenshot ? { backgroundImage: `url(${latest.screenshot})` } : {}} />
+            <div style={{ minWidth: 0 }}>
+              <span className="pill c">Latest catch</span> <span className="faint sm">{ago(latest.capturedAt)}</span>
+              <h3>{latest.page}</h3>
+              <div style={{ margin: "4px 0" }}><Values v={latest.summary?.values} /> <Chips s={latest.summary} /></div>
+              <span className="sm" style={{ color: "var(--acc)" }}>View screenshot and diff →</span>
+            </div>
+          </Link>}
+          <div className="row2" style={{ margin: "16px 0 12px" }}>
             <input placeholder="Search pages…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 360 }} />
             <span className="muted sm">{tdate ? `Showing the web as of ${tdate}` : `${shown.length} of ${pages?.length ?? 0} pages, most recently changed first`}</span>
           </div>
+          {!pages && <div className="rows">{[0, 1, 2, 3].map((i) => <div key={i} className="row skel"><div className="th" /><div><h3>&nbsp;</h3></div></div>)}</div>}
           {pages && !pages.length && <div className="empty"><h3>No pages yet</h3>Track a URL on the left, or add the seed pages.</div>}
           <div className="rows">
             {shown.map((p) => {
@@ -185,6 +199,7 @@ export default function Home() {
                         : p.changes ? <><span className="dot warn" /><span>Changed {rel(p.lastChangeAt)}</span><span className="faint">· checked {rel(p.lastCheckedAt)}</span></>
                         : <><span className="dot" /><span>No change yet</span><span className="faint">· {Math.max(p.checks - 1, 0)} re-check{p.checks === 2 ? "" : "s"}, last {rel(p.lastCheckedAt)}</span></>}
                     </div>
+                    {lastBy[p.id] && !tdate && <div style={{ marginTop: 6 }}><Values v={lastBy[p.id].summary?.values} /> <Chips s={lastBy[p.id].summary} /></div>}
                   </div>
                   <div className="vcount"><b>{tdate && s?.version ? `v${s.version}` : p.versionCount}</b><span>{tdate ? "on date" : p.versionCount === 1 ? "version" : "versions"}</span></div>
                 </Link>
@@ -218,15 +233,16 @@ export default function Home() {
 
       <aside className="activity side">
         <div className="panel">
-          <h2>Live activity</h2>
+          <h2>Activity</h2>
+          {lastRun && <p className="muted sm" style={{ margin: "0 0 10px" }}>Last sweep {rel(lastRun)}: {sweep.length} pages checked, {sweep.filter((e) => e.result === "changed").length} changed.</p>}
           <div className="feed">
-            {log.slice(0, 12).map((e, i) => (
-              <Link key={i} href={`/p/${e.pageId}`}>
-                <div><span className={"pill " + pillFor(e.result)}>{e.result === "unchanged" ? "no change" : e.result}</span> <span className="faint">{rel(e.at)}</span></div>
+            {notable.map((e, i) => (
+              <Link key={i} href={`/p/${e.pageId}${e.version ? "?v=" + e.version : ""}`}>
+                <div><span className={"pill " + pillFor(e.result)}>{e.result}</span> <span className="faint">{rel(e.at)}</span></div>
                 <div style={{ marginTop: 3 }}>{e.page}</div>
               </Link>
             ))}
-            {!log.length && <p className="muted sm">Waiting for the first runs…</p>}
+            {!notable.length && <p className="muted sm">{log.length ? "Only unchanged checks so far. Changes show up here." : "Waiting for the first runs…"}</p>}
           </div>
         </div>
       </aside>
