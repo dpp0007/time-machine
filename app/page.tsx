@@ -101,7 +101,7 @@ export default function Home() {
   const sum = (f: (p: Card) => number) => (pages ?? []).reduce((a, p) => a + f(p), 0);
   const lastRun = log[0]?.at ?? null;
   const lastBy = useMemo(() => { const m: Record<string, Change> = {}; changes.forEach((c) => { if (!m[c.pageId]) m[c.pageId] = c; }); return m; }, [changes]);
-  const latest = changes[0];
+  const latest = changes.find((c) => c.summary?.values?.length) ?? changes[0];
   const sweep = lastRun ? log.filter((e) => new Date(lastRun).getTime() - new Date(e.at).getTime() < 30 * 60_000) : [];
   const notable = log.filter((e) => e.result !== "unchanged" && e.result !== "baseline").slice(0, 8);
 
